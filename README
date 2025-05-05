@@ -1,64 +1,79 @@
-Linux Live Kit
-==============
+traveler-live
+The TravelerOS live kit (forked from linux-live 2.11) that anyone can use to make a TravelerOS-based linux distro.
+This README file will show you all the steps to create a bootable TravelerOS-based linux distro.
 
-Use this set of scripts to turn your existing preinstalled Linux
-distribution into a Live Kit (formely known as Live CD).
-Make sure to extract and use it on a posix-compatible filesystem,
-since it creates some (sym)links and such.
+1. Creating the base
+To create a TravelerOS-based linux distro, you need a base first, here are some linux distros I suggest using for your base.
+If you want your TravelerOS-based linux distro to be Debian based, use Q4OS, or Debian.
+If you want your TravelerOS-based linux distro to be Ubuntu based, just use Ubuntu, or the Ubuntu spins.
+If you want your TravelerOS-based linux distro to be Arch based, just use Arch, or Arch-based distros.
 
-Note:
+But, whatever distro your using, it can also be your base.
 
-* Store Linux Live kit in a directory which is not going to be included
-  in your live distro, else it would be copied to it. Best practice is to
-  make a directory such as /a and put these scripts there.
-  Be warned, if you put it to /tmp, some distros may erase it on reboot.
+2. Customizing
+You need to customize your linux distro with your branding.
+To create the logo, I suggest using Canva or other photo editing software to create your logo.
+For the wallpaper, you can choose any wallpaper that your distro comes with or create your own by
+taking pictures of random things, like trains, parks, lakes, oceans, and lots more!
+You can also customize other stuff.
 
-* Before you start building your Kit, edit the file ./config
-  Most importantly change the LIVEKITNAME variable.
+3. Adding/Removing software (Optional)
+Some linux distros come with pre-installed applications that you don't want.
+You can remove them by using the terminal, software manager, or whatever.
+Removing software can make your ISO image smaller.
 
-* Make sure your kernel is in /vmlinuz or change the path in ./config
-  Your kernel must support squashfs. Your kernel must also support either
-  aufs or overlayfs or both. AUFS is recommended for more flexibility,
-  but if your distro does not support it, overlayfs will work too.
+4. Installing this repository
+Head to your web browser that your linux distro comes with, like Firefox.
+Then, go to the repository and go to Code > HTTPS > Download ZIP
+After that, extract the zip to whatever directory you want the folder to be in. (example: /home/username)
 
-* You may also wish to replace boot graphics in ./bootfiles/bootlogo.png
-  (one options is to modify and run the ./tools/bootlogo.update script) 
-  and reorganize isolinux.cfg to fit your needs (when editing the file,
-  keep all paths in /boot/, it will be rellocated during LiveKit creation)
+5. Customizing the repository
+Head to the config script, and open it using your text editor.
+Edit LIVEKITNAME.
+Also, vmlinuz sometimes is located in the /boot folder. So just try to locate the vmlinuz file,
+and type the path to vmlinuz in ./config
 
-* Linux Live Kit comes with precompiled static binaries in ./initramfs
-  directory. Those may be outdated but will work. You may replace them
-  by your own statically linked binaries, if you know how to compile them.  
+Head to the bootfiles folder, and look for bootlogo.png. To replace it, use a photo
+editing software to create your customized bootlogo.png. Remember that bootlogo.png is 640x480,
+so don't make it bigger.
 
-* If you plan to boot your Live Kit from CD, you need to recompile
-  syslinux.bin else it won't be able to boot your Live Kit from directory
-  LIVEKITNAME. There is a script prepared for you which will handle all
-  of that. Simply go to directory ./tools/ and run isolinux.bin.update ...
-  it will update ./bootfiles/isolinux.bin automatically by downloading
-  isolinux sources, patching them using your actual LIVEKITNAME and
-  recompiling. This step is not needed if you plan to boot from USB only.
+Then, head to syslinux.cfg and add the following boot paremeters at the end of the APPEND section:
+perchdir=new
+perchdir=resume
+This will activate persistent changes.
 
-* If you plan to boot your Live Kit from USB device, you may wish to add
-  the following boot parameter to the end of APPEND section in syslinux.cfg:
-     perch
-  This parameter activates persistent changes
+Then, head to the grub folder and edit grub.cfg
+and add the same boot paremeters at the end of the linux section.
+Then edit the following sections located in grub.cfg:
 
-* If you have tmpfs mounted on /tmp during building your Live Kit ISO,
-  make sure you have enough RAM since LiveKit will store lots of data in /tmp.
-  If you are low on RAM, make sure /tmp is a regular on-disk directory.
+if [ -e /(your LIVEKITNAME)/boot/bootlogo.png ]; then
+    set theme=/(your LIVEKITNAME)/boot/grub/traveler-theme/theme.txt
 
-* When done, run the ./build script to create your Live Kit
-  - it will create ISO and TAR files for you in /tmp
-  - make sure you have enough free space in /tmp to handle it
-  
-* If you want to use the Live Kit on a USB you have to either
-  - use Windows to execute the bootinst.bat file in the $NAME/boot folder
-  - or use Linux to execute the shellscript bootinst.sh in the $NAME/boot folder.
+set linux_image="/(your LIVEKITNAME)/boot/vmlinuz"
+set initrd_img="/(your LIVEKITNAME)/boot/initrfs.img"
+
+Replace (your LIVEKITNAME) to your LIVEKITNAME.
+
+In /$LIVEKITNAME/boot/grub/traveler-theme/theme.txt,
+change this line:
+
+desktop-image: "/(your LIVEKITNAME)/boot/bootlogo.png"
+
+And replace (your LIVEKITNAME) to your LIVEKITNAME.
+
+6. Running ./build
+Make sure your running the terminal as root for this one.
+All you have to do is:
+sudo su - root
+then,
+cd /PATH/TO/LIVE/KIT
+finally, do,
+sudo ./build
+then, play the waiting game!
+Once it's finished, you can make the ISO file in /tmp, or somewhere else.
 
 * You will need the following packages to be installed:
   - squashfs-tools
   - genisoimage or mkisofs
   - zip
 
-
-Author: Tomas M. <http://www.linux-live.org>
