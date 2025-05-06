@@ -2,7 +2,7 @@
 # This is a config file for Linux Live Kit build script.
 # You shouldn't need to change anything expect LIVEKITNAME
 
-# Live Kit Name. Defaults to 'myOS';
+# Live Kit Name. Defaults to 'yourOS';
 # This will be the name of the directory created on your CD/USB, which
 # will contain everything including boot files and such.
 # For example, Slax changes it to 'slax'
@@ -12,7 +12,7 @@
 # If you do not need booting from CD (eg you're booting only from USB)
 # then you can ignore recompiling isolinux.bin, just rename LIVEKITNAME
 # and you're done.
-LIVEKITNAME="myOS"
+LIVEKITNAME="yourOS"
 
 # Kernel file, will be copied to your Live Kit
 # Your kernel must support aufs and squashfs. Debian Jessie's kernel is ready
