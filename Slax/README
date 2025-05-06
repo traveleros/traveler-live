@@ -6,3 +6,5 @@ WARNING:
 You should not run this on your system since it auto-installs some packages
 and removes lots of files from your filesystem.
 Use only on freshly installed OS. You have been warned.
+
+Also, it is not necessary to run this, even though the only thing you can run is ./build.
