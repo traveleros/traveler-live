@@ -42,32 +42,13 @@ perchdir=new
 perchdir=resume
 This will activate persistent changes.
 
-Then, head to the grub folder and edit grub.cfg
-and add the same boot paremeters at the end of the linux section.
-Then edit the following sections located in grub.cfg:
-
-if [ -e /(your LIVEKITNAME)/boot/bootlogo.png ]; then
-    set theme=/(your LIVEKITNAME)/boot/grub/traveler-theme/theme.txt
-
-set linux_image="/(your LIVEKITNAME)/boot/vmlinuz"
-set initrd_img="/(your LIVEKITNAME)/boot/initrfs.img"
-
-Replace (your LIVEKITNAME) to your LIVEKITNAME.
-
-In /$LIVEKITNAME/boot/grub/traveler-theme/theme.txt,
-change this line:
-
-desktop-image: "/(your LIVEKITNAME)/boot/bootlogo.png"
-
-And replace (your LIVEKITNAME) to your LIVEKITNAME.
-
 6. Running ./build
 Make sure your running the terminal as root for this one.
 All you have to do is:
 sudo su - root
 then,
 cd /PATH/TO/LIVE/KIT
-finally, do,
+finally, do
 sudo ./build
 then, play the waiting game!
 Once it's finished, you can make the ISO file in /tmp, or somewhere else.
