@@ -1,7 +1,7 @@
- Welcome to MiniOS.
+ Welcome to yourOS.
 
  Select a pre-configured option from the boot menu, or press [Tab] key to
- manually edit the boot command line in order to customize how MiniOS boots.
+ manually edit the boot command line in order to customize how yourOS boots.
  A detailed description of various boot parameters is provided below.
 
  * toram: If specified, all data are copied to memory during startup so you
@@ -9,8 +9,8 @@
 
  * text: If specified, you will be loaded with text mode at startup
 
- * perchdir=[resume/new/ask/askdir/#]: When MiniOS is started from a writable media,
-   all changes are saved to subdirectories of /minios/changes/ to make them
+ * perchdir=[resume/new/ask/askdir/#]: When yourOS is started from a writable media,
+   all changes are saved to subdirectories of /youros/changes/ to make them
    persistent. This parameter allows you to choose what session to resume.
    Use perchdir=resume to auto resume the session used on previous boot. If askdir
    is specified, you can select the disk where the changes are stored.
@@ -21,11 +21,11 @@
    perchsize=4000 for 4GB.
 
  * from=[file/path/device/ask] is used to set a directory or even device from
-   which is MiniOS started. For example, from=/minios, from=/dev/sr1/miniosdata
+   which is yourOS started. For example, from=/minios, from=/dev/sr1/miniosdata
    or even from=http://some_url/to_iso_file.iso
 
  * load=[regex] is used to specify what modules will be loaded. Use
-   a regular expression, for example load=00,01,02 or load=core,minios,kernel,fimware
+   a regular expression, for example load=00 or load=core
 
  * noload=[regex] is used to specify what modules will not be loaded. Use
    a regular expression, for example noload=04-apps or noload=apps|chromium
