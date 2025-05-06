@@ -159,7 +159,7 @@ main() {
    case "$ENVIRONMENT" in
       ventoy)
          # Ventoy-specific logic
-         ISO_PATH="/ventoy/example.iso"
+         ISO_PATH="/ventoy/$LIVEKITNAME.iso"
          MOUNT_POINT="/mnt/iso"
          CHANGES_DIR="/ventoy/changes"
          TARGET_DIR="/mnt/changes"
