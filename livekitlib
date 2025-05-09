@@ -8,7 +8,7 @@
 # =================================================================
 
 debug_start() {
-   if grep -q debug /proc/cmdline; then
+   if grep -q debug /proc/cmdline 2>/dev/null; then
       DEBUG_IS_ENABLED=1
       set -x
    else
@@ -25,6 +25,18 @@ debug_log() {
 
 log() {
    echo "$@" 2>/dev/null >>/var/log/livedbg
+}
+
+# =================================================================
+# Ensure /proc and /sys are mounted
+# =================================================================
+
+init_proc_sysfs() {
+   echo "Initializing /proc and /sys filesystems..."
+   mkdir -p /proc /sys /etc
+   mount -t proc proc /proc 2>/dev/null || echo "Warning: /proc already mounted or unavailable."
+   mount -t sysfs sysfs /sys 2>/dev/null || echo "Warning: /sys already mounted or unavailable."
+   ln -sf /proc/mounts /etc/mtab
 }
 
 # =================================================================
@@ -51,7 +63,7 @@ is_extracted_iso() {
 
 # Detect if running from a raw ISO image
 is_raw_iso() {
-   if grep -q "iso9660" /proc/mounts; then
+   if grep -q "iso9660" /proc/mounts 2>/dev/null; then
       return 0
    else
       return 1
@@ -96,24 +108,6 @@ unmount_iso() {
    return 0
 }
 
-# Handle persistent changes for all environments
-persistent_changes() {
-   local CHANGES_DIR="$1"
-   local TARGET_DIR="$2"
-
-   mkdir -p "$TARGET_DIR"
-
-   if [ -f "$CHANGES_DIR/changes.dat" ]; then
-      echo "Restoring persistent changes from $CHANGES_DIR/changes.dat"
-      mount -o loop "$CHANGES_DIR/changes.dat" "$TARGET_DIR"
-   else
-      echo "Creating new persistent changes file"
-      dd if=/dev/zero of="$CHANGES_DIR/changes.dat" bs=1M count=512
-      mkfs.ext4 "$CHANGES_DIR/changes.dat"
-      mount -o loop "$CHANGES_DIR/changes.dat" "$TARGET_DIR"
-   fi
-}
-
 # =================================================================
 # Initialization Functions
 # =================================================================
@@ -145,13 +139,21 @@ init_network() {
 # Initialize filesystem
 init_filesystem() {
    echo "Initializing filesystem..."
-   # Add filesystem initialization logic here
-   # This could include mounting necessary filesystems, setting up tmpfs, etc.
+   mkdir -p /memory /mnt /tmp
 }
 
-# Main function to handle boot
+# =================================================================
+# Main Function
+# =================================================================
+
 main() {
+   # Ensure /proc and /sys are mounted
+   init_proc_sysfs
+
+   # Initialize environment
    init_environment
+
+   # Initialize network and filesystem
    init_network
    init_filesystem
 
@@ -159,7 +161,7 @@ main() {
    case "$ENVIRONMENT" in
       ventoy)
          # Ventoy-specific logic
-         ISO_PATH="/ventoy/$LIVEKITNAME.iso"
+         ISO_PATH="/ventoy/TravelerOS-2-Zippy-amd64.iso"
          MOUNT_POINT="/mnt/iso"
          CHANGES_DIR="/ventoy/changes"
          TARGET_DIR="/mnt/changes"
@@ -186,6 +188,10 @@ main() {
    # Additional common logic for all environments can be added here
    echo "Boot process completed successfully."
 }
+
+# Execute the main function
+main "$@"
+
 
 # Execute the main function
 main "$@"
