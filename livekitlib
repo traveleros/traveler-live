@@ -1,14 +1,16 @@
-#!/bin/sh
+#!/bin/bash
+[ -z "$LIVEKITNAME" ] && LIVEKITNAME="traveler2"
 
-# Functions library :: Adapted for Ventoy, Rufus, Etcher, UNetbootin, and others
-# Author: Tomas M. (Original), Modified for Multi-Tool Compatibility by [Adrian E]
+# Functions library :: for Linux Live Kit scripts
+# Author: Tomas M. <http://www.linux-live.org>
+# Author: Adrian E <https://bit.ly/travelerwebsite>
 
 # =================================================================
-# Debug and output functions
+# debug and output functions
 # =================================================================
 
 debug_start() {
-   if grep -q debug /proc/cmdline 2>/dev/null; then
+   if grep -q debug /proc/cmdline; then
       DEBUG_IS_ENABLED=1
       set -x
    else
@@ -23,175 +25,417 @@ debug_log() {
    log "- debug: $*"
 }
 
+# header
+# $1 = text to show
+#
+header() {
+   echo "[0;1m""$@""[0;0m"
+}
+
+# echo green star
+#
+echo_green_star() {
+   echo -ne "[0;32m""* ""[0;39m"
+}
+
+# log - store given text in /var/log/livedbg
+#
 log() {
    echo "$@" 2>/dev/null >>/var/log/livedbg
 }
 
-# =================================================================
-# Ensure /proc and /sys are mounted
-# =================================================================
-
-init_proc_sysfs() {
-   echo "Initializing /proc and /sys filesystems..."
-   mkdir -p /proc /sys /etc
-   mount -t proc proc /proc 2>/dev/null || echo "Warning: /proc already mounted or unavailable."
-   mount -t sysfs sysfs /sys 2>/dev/null || echo "Warning: /sys already mounted or unavailable."
-   ln -sf /proc/mounts /etc/mtab
+echolog() {
+   echo "$@"
+   log "$@"
 }
 
-# =================================================================
-# Environment Detection Functions
-# =================================================================
+# show information about the debug shell
+#
+show_debug_banner() {
+   echo
+   echo "====="
+   echo ": Debugging started. Here is the root shell for you."
+   echo ": Type your desired commands or hit Ctrl+D to continue booting."
+   echo
+}
 
-# Detect if running in Ventoy environment
-is_ventoy() {
-   if [ -f "/ventoy/version" ]; then
-      return 0
-   else
-      return 1
+# debug_shell
+# executed when debug boot parameter is present
+#
+debug_shell() {
+   if [ "$DEBUG_IS_ENABLED" ]; then
+      show_debug_banner
+      setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
+      echo
    fi
 }
 
-# Detect if running in extracted ISO environment (Rufus/Etcher/UNetbootin)
-is_extracted_iso() {
-   if [ -f "/syslinux.cfg" ] || [ -f "/isolinux/isolinux.cfg" ] || [ -f "/boot/grub/grub.cfg" ]; then
-      return 0
-   else
-      return 1
-   fi
+fatal() {
+   echolog
+   header "Fatal error occured - $1"
+   echolog "TravelerOS has ran into an issue and it cannot recover."
+   echolog "Press Ctrl+Alt+Delete to restart your computer..."
+   echolog
+   setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
 }
 
-# Detect if running from a raw ISO image
-is_raw_iso() {
-   if grep -q "iso9660" /proc/mounts 2>/dev/null; then
-      return 0
-   else
-      return 1
-   fi
+# get value of commandline parameter $1
+# $1 = parameter to search for
+#
+cmdline_value() {
+   cat /proc/cmdline | egrep -o "(^|[[:space:]])$1=[^[:space:]]+" | tr -d " " | cut -d "=" -f 2- | tail -n 1
 }
 
-# =================================================================
-# ISO Handling Functions
-# =================================================================
-
-# Mount ISO using loopback (for Ventoy or raw ISO environments)
-mount_iso() {
-   local ISO_PATH="$1"
-   local MOUNT_POINT="$2"
-
-   if [ ! -f "$ISO_PATH" ]; then
-      echo "ISO file not found: $ISO_PATH"
-      return 1
-   fi
-
-   mkdir -p "$MOUNT_POINT"
-   mount -o loop "$ISO_PATH" "$MOUNT_POINT"
-   if [ $? -ne 0 ]; then
-      echo "Failed to mount ISO: $ISO_PATH"
-      return 1
-   fi
-
-   echo "Mounted ISO: $ISO_PATH at $MOUNT_POINT"
-   return 0
+# get value of config parameter $2
+# $1 = config file name
+# $2 = parameter to search for
+#
+config_value() {
+   cat $1 | egrep -o "(^|[[:space:]])$2=[^[:space:]]+" | tr -d " " | cut -d "=" -f 2- | tail -n 1 | sed 's/"//g'
 }
 
-# Unmount ISO
-unmount_iso() {
-   local MOUNT_POINT="$1"
-   umount "$MOUNT_POINT"
-   if [ $? -ne 0 ]; then
-      echo "Failed to unmount: $MOUNT_POINT"
-      return 1
-   fi
-
-   echo "Unmounted: $MOUNT_POINT"
-   return 0
-}
-
-# =================================================================
-# Initialization Functions
-# =================================================================
-
-# Initialize environment
-init_environment() {
-   if is_ventoy; then
-      echo "Running in Ventoy environment"
-      ENVIRONMENT="ventoy"
-   elif is_extracted_iso; then
-      echo "Running in extracted ISO environment (Rufus/Etcher/UNetbootin)"
-      ENVIRONMENT="extracted_iso"
-   elif is_raw_iso; then
-      echo "Running in raw ISO environment"
-      ENVIRONMENT="raw_iso"
-   else
-      echo "Unknown environment"
+# test if the script is started by root user. If not, exit
+#
+allow_only_root() {
+   if [ "0$UID" -ne 0 ]; then
+      echo "Only root can run $(basename $0)"
       exit 1
    fi
 }
 
-# Initialize network settings
-init_network() {
-   echo "Initializing network settings..."
-   # Add network initialization logic here
-   # This could include DHCP setup, static IP configuration, etc.
+# Create bundle
+# call mksquashfs with apropriate arguments
+# $1 = directory which will be compressed to squashfs bundle
+# $2 = output file
+# $3..$9 = optional arguments like -keep-as-directory or -b 123456789
+#
+create_bundle() {
+   debug_log "create_module" "$*"
+   rm -f "$2" # overwrite, never append to existing file
+   mksquashfs "$1" "$2" -comp xz -b 1024K -Xbcj x86 -always-use-fragments $3 $4 $5 $6 $7 $8 $9 >/dev/null
 }
 
-# Initialize filesystem
-init_filesystem() {
-   echo "Initializing filesystem..."
-   mkdir -p /memory /mnt /tmp
+# Move entire initramfs tree to tmpfs mount.
+# It's a bit tricky but is necessray to enable pivot_root
+# even for initramfs boot image
+#
+transfer_initramfs() {
+   if [ ! -r /lib/initramfs_escaped ]; then
+      echo "switch root from initramfs to ramfs"
+      SWITCH=/m # one letter directory
+      mkdir -p $SWITCH
+      mount -t tmpfs -o size="100%" tmpfs $SWITCH
+      cp -a /??* $SWITCH 2>/dev/null # only copy two-and-more-letter directories
+      cd $SWITCH
+      echo "This file indicates that we successfully escaped initramfs" >$SWITCH/lib/initramfs_escaped
+      exec switch_root -c /dev/console . $0
+   fi
 }
 
-# =================================================================
-# Main Function
-# =================================================================
-
-main() {
-   # Ensure /proc and /sys are mounted
-   init_proc_sysfs
-
-   # Initialize environment
-   init_environment
-
-   # Initialize network and filesystem
-   init_network
-   init_filesystem
-
-   # Example: Handle environment-specific logic
-   case "$ENVIRONMENT" in
-      ventoy)
-         # Ventoy-specific logic
-         ISO_PATH="/ventoy/TravelerOS-2-Zippy-amd64.iso"
-         MOUNT_POINT="/mnt/iso"
-         CHANGES_DIR="/ventoy/changes"
-         TARGET_DIR="/mnt/changes"
-
-         mount_iso "$ISO_PATH" "$MOUNT_POINT"
-         persistent_changes "$CHANGES_DIR" "$TARGET_DIR"
-         ;;
-      extracted_iso)
-         # Extracted ISO logic
-         echo "Booting from extracted ISO files"
-         # Additional logic for extracted ISO environments can be added here
-         ;;
-      raw_iso)
-         # Raw ISO logic
-         echo "Booting from raw ISO image"
-         # Additional logic for raw ISO environments can be added here
-         ;;
-      *)
-         echo "Unsupported environment"
-         exit 1
-         ;;
-   esac
-
-   # Additional common logic for all environments can be added here
-   echo "Boot process completed successfully."
+# mount virtual filesystems like proc etc
+#
+init_proc_sysfs() {
+   debug_log "init_proc_sysfs" "$*"
+   mkdir -p /proc /sys /etc $MEMORY
+   mount -n -t proc proc /proc
+   echo "0" >/proc/sys/kernel/printk
+   mount -n -t sysfs sysfs /sys
+   mount -n -o remount,rw rootfs /
+   ln -sf /proc/mounts /etc/mtab
 }
 
-# Execute the main function
-main "$@"
+# modprobe the drivers needed to load in QEMU and VMware virtual machines, if any
+#
+modprobe_cloud() {
+   modprobe virtio 2>/dev/null
+   modprobe virtio_ring 2>/dev/null
+   modprobe virtio_pci 2>/dev/null
+   modprobe virtio_blk 2>/dev/null
+   modprobe virtio_scsi 2>/dev/null
+   modprobe vmw_pvscsi 2>/dev/null
+}
 
+# modprobe all modules found in initial ramdisk
+# $1 = -e for match, -v for negative match
+# $2 = regex pattern
+#
+modprobe_everything() {
+   debug_log "modprobe_everything" "$*"
 
-# Execute the main function
-main "$@"
+   echo_green_star >&2
+   echo "Probing for hardware" >&2
+
+   find /lib/modules/ | fgrep .ko | egrep $1 $2 | sed -r "s:^.*/|[.]ko\$::g" | xargs -n 1 modprobe 2>/dev/null
+   refresh_devs
+}
+
+refresh_devs() {
+   debug_log "refresh_devs" "$*"
+   if [ -r /proc/sys/kernel/hotplug ]; then
+      echo /sbin/mdev >/proc/sys/kernel/hotplug
+   fi
+   mdev -s
+}
+
+# make sure some devices are there
+#
+init_devs() {
+   debug_log "init_devs" "$*"
+   modprobe zram 2>/dev/null
+   modprobe loop 2>/dev/null
+   modprobe squashfs 2>/dev/null
+   modprobe fuse 2>/dev/null
+   refresh_devs
+}
+
+# Activate zram (auto-compression of RAM)
+# Compressed RAM consumes 1/2 or even 1/4 of original size
+#
+init_zram() {
+   if grep -q nozram /proc/cmdline; then
+      return
+   fi
+   debug_log "init_zram" "$*"
+   echo_green_star
+   echo "Setting dynamic RAM compression using ZRAM if available"
+   ZRAMCOMP=$(cmdline_value zramcomp)
+   ZRAMSIZE=$(cmdline_value zramsize)
+   TOTAL_MEM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+
+   if [ -z "$ZRAMSIZE" ]; then
+      if [ "$TOTAL_MEM_KB" -ge 4194304 ]; then
+         ZRAMSIZE=2048
+      elif [ "$TOTAL_MEM_KB" -ge 1048576 ]; then
+         ZRAMSIZE=$((TOTAL_MEM_KB / 1024 / 2))
+      else
+         ZRAMSIZE=512
+      fi
+   fi
+
+   ZRAMSIZE=$((ZRAMSIZE * 1024 * 1024))
+   if [ -r /sys/block/zram0/comp_algorithm ]; then
+      case "$ZRAMCOMP" in
+      lzo | lzo-rle | lz4 | lz4hc | zstd)
+         echo $ZRAMCOMP >/sys/block/zram0/comp_algorithm
+         ;;
+      esac
+   fi
+   if [ -r /sys/block/zram0/disksize ]; then
+      echo $ZRAMSIZE >/sys/block/zram0/disksize
+      mkswap /dev/zram0 >/dev/null
+      swapon /dev/zram0
+      echo 100 >/proc/sys/vm/swappiness
+   fi
+}
+
+aufs_is_supported() {
+   cat /proc/filesystems | grep aufs >/dev/null 2>&1
+}
+
+# load the AUFS kernel driver. If not found,
+# load overlayfs instead.
+#
+init_aufs() {
+   debug_log "init_aufs" "$*"
+   modprobe aufs 2>/dev/null
+   if ! aufs_is_supported >/dev/null; then
+      modprobe overlay 2>/dev/null
+   fi
+   refresh_devs
+}
+
+# Setup empty aufs union, or create overlayfs union
+# $1 = changes directory (ramfs or persistent changes)
+# $2 = union directory where to mount the union
+# $3 = bundles directory
+#
+init_union() {
+   debug_log "init_union" "$*"
+   mkdir -p "$1"
+   mkdir -p "$2"
+
+   if aufs_is_supported >/dev/null; then
+      echo_green_star
+      echo "Setting up empty union using aufs"
+      mount -t aufs -o xino="/.xino",trunc_xino,br="$1" aufs "$2"
+   else
+      echo_green_star
+      echo "Setting up union using overlayfs"
+      mkdir -p "$1/changes"
+      mkdir -p "$1/workdir"
+      mount -t overlay overlay -o lowerdir=$(find "$3" -mindepth 1 -maxdepth 1 | sortmod | tac | tr '\n' ':' | sed -r 's/:$//'),upperdir=$1/changes,workdir=$1/workdir $2
+   fi
+}
+
+# Return device mounted for given directory
+# $1 = directory
+#
+mounted_device() {
+   debug_log "mounted_device" "$*"
+
+   local MNT TARGET
+   MNT="$1"
+   while [ "$MNT" != "/" -a "$MNT" != "." -a "$MNT" != "" ]; do
+      TARGET="$(grep -F " $MNT " /proc/mounts | cut -d " " -f 1)"
+      if [ "$TARGET" != "" ]; then
+         echo "$TARGET"
+         return
+      fi
+      MNT="$(dirname "$MNT")"
+   done
+}
+
+# Return mounted dir for given directory
+# $1 = directory
+#
+mounted_dir() {
+   debug_log "mounted_dir" "$*"
+
+   local MNT
+   MNT="$1"
+   while [ "$MNT" != "/" -a "$MNT" != "." -a "$MNT" != "" ]; do
+      if mountpoint -q "$MNT" 2>/dev/null; then
+         echo "$MNT"
+         return
+      fi
+      MNT="$(dirname "$MNT")"
+   done
+}
+
+# Initialize blkid cache by manually probing all devices
+#
+init_blkid_cache() {
+   local DEV
+   cat /proc/partitions | tr -s " " | cut -d " " -f 5 | while read DEV; do
+      blkid /dev/$DEV >/dev/null 2>/dev/null
+   done
+}
+
+# Get device tag.
+# $1 = device
+# $2 = tag name, such as TYPE, LABEL, UUID, etc
+#
+device_tag() {
+   blkid -s $2 "$1" | sed -r "s/^[^=]+=//" | tr -d '"'
+}
+
+# Make sure to mount FAT12/16/32 using vfat
+# in order to support long filenames
+# $1 = device
+# $2 = prefix to add, like -t
+#
+device_bestfs() {
+   debug_log "device_bestfs" "$*"
+   local FS
+
+   FS="$(device_tag "$1" TYPE | tr [A-Z] [a-z])"
+   if [ "$FS" = "msdos" -o "$FS" = "fat" -o "$FS" = "vfat" ]; then
+      FS="vfat"
+   elif [ "$FS" = "ntfs" ]; then
+      if lsmod | grep -q ntfs; then
+         FS="ntfs3"
+      else
+         FS="ntfs-3g"
+      fi
+   fi
+
+   if [ "$2" != "" ]; then
+      echo -n "$2"
+   fi
+
+   echo "$FS"
+}
+
+# Filesystem options for initial mount
+# $1.. = filesystem
+#
+fs_options() {
+   debug_log "fs_options" "$*"
+
+   if [ "$1" != "ntfs-3g" ]; then
+      echo -n "-t $1 "
+   fi
+
+   echo -n "-o rw"
+
+   if [ "$1" = "vfat" ]; then
+      echo ",umask=000,check=s,shortname=mixed,iocharset=utf8"
+   elif [ "$1" = "ntfs-3g" ] || [ "$1" = "ntfs3" ] || [ "$1" = "exfat" ]; then
+      echo ",umask=000"
+   fi
+}
+
+# Mount command for given filesystem
+# $1.. = filesystem
+#
+mount_command() {
+   debug_log "mount_command" "$*"
+
+   if [ "$1" = "ntfs-3g" ]; then
+      echo "@mount.ntfs-3g"
+   else
+      echo "mount"
+   fi
+}
+
+# echo first network device known at the moment of calling, eg. eth0
+#
+network_device() {
+   debug_log "network_device" "$*"
+   cat /proc/net/dev | grep : | grep -v lo: | grep -v ip6tnl | cut -d : -f 1 | tr -d " " | head -n 1
+}
+
+# Modprobe network kernel modules until a working driver is found.
+# These drivers are (or used to be) probed in Slackware's initrd.
+# The function returns the first device found, yet it doesn't have
+# to be a working one, eg. if the computer has two network interfaces
+# and ethernet cable is plugged only to one of them.
+#
+init_network_dev() {
+   debug_log "init_network_dev" "$*"
+   local MODULE ETH
+
+   for MODULE in 3c59x acenic e1000 e1000e e100 epic100 hp100 ne2k-pci \
+      pcnet32 8139too 8139cp tulip via-rhine r8169 atl1e yellowfin tg3 \
+      dl2k ns83820 atl1 b44 bnx2 skge sky2 tulip forcedeth sb1000 sis900 \
+      vmxnet3 virtio_net; do
+      modprobe $MODULE 2>/dev/null
+      ETH="$(network_device)"
+      if [ "$ETH" != "" ]; then
+         echo $ETH
+         return 0
+      fi
+      rmmod $MODULE 2>/dev/null
+   done
+
+   # If we are here, none of the above specified modules worked.
+   # As a last chance, try to modprobe everything else
+   modprobe_everything -e /drivers/net/
+   echo $(network_device)
+}
+
+# Initialize network IP address
+# either static from ip=bootparameter, or from DHCP
+#
+init_network_ip() {
+   debug_log "init_network_ip" "$*"
+   local IP ETH SCRIPT CLIENT SERVER GW MASK
+
+   SCRIPT=/tmp/dhcpscript
+   ETH=$(init_network_dev)
+   IP=$(cmdline_value ip)
+
+   echo "* Setting up network" >&2
+
+   if [ "$IP" != "" ]; then
+      # set IP address as given by boot parameter
+      echo "$IP" | while IFS=":" read CLIENT SERVER GW MASK; do
+         ifconfig $ETH "$CLIENT" netmask "$MASK"
+         route add default gw "$GW"
+         echo nameserver "$GW" >>/etc/resolv.conf
+         echo nameserver "$SERVER" >>/etc/resolv.conf
+      done
+   else
+      # if client ip is unknown, try to get a DHCP lease
+      ifconfig $ETH up
+      echo -e '#!/bin/sh\nif [ "$1" != "bound" ]; then exit; fi\nifconfig $interface $ip netmask $sub
