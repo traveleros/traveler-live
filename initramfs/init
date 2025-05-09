@@ -2,7 +2,7 @@
 # Initial script for TravelerOS Live Kit
 # Adapted for Ventoy, Rufus, Etcher, UNetbootin, and others
 # Author: Tomas M <http://www.linux-live.org/>
-# Modified by: [Adrian E]
+# Modified by: Adrian E
 
 export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -18,6 +18,42 @@ DATAMNT=$MEMORY/data
 BUNDLES=$MEMORY/bundles
 
 header "TravelerOS Live Kit init <https://bit.ly/travelerwebsite>"
+
+# =================================================================
+# Debug and Output Functions
+# =================================================================
+
+debug_start() {
+   if grep -q debug /proc/cmdline 2>/dev/null; then
+      DEBUG_IS_ENABLED=1
+      set -x
+   else
+      DEBUG_IS_ENABLED=
+   fi
+}
+
+debug_log() {
+   if [ "$DEBUG_IS_ENABLED" ]; then
+      echo "- debug: $*" >&2
+   fi
+   log "- debug: $*"
+}
+
+log() {
+   echo "$@" 2>/dev/null >>/var/log/livedbg
+}
+
+# =================================================================
+# Ensure /proc and /sys are Mounted
+# =================================================================
+
+init_proc_sysfs() {
+   echo "Initializing /proc and /sys filesystems..."
+   mkdir -p /proc /sys /etc $MEMORY
+   mount -t proc proc /proc 2>/dev/null || echo "Warning: /proc already mounted or unavailable."
+   mount -t sysfs sysfs /sys 2>/dev/null || echo "Warning: /sys already mounted or unavailable."
+   ln -sf /proc/mounts /etc/mtab
+}
 
 # =================================================================
 # Environment Detection Functions
@@ -43,7 +79,7 @@ is_extracted_iso() {
 
 # Detect if running from a raw ISO image
 is_raw_iso() {
-   if grep -q "iso9660" /proc/mounts; then
+   if grep -q "iso9660" /proc/mounts 2>/dev/null; then
       return 0
    else
       return 1
@@ -71,104 +107,17 @@ init_environment() {
 # Initialization Functions
 # =================================================================
 
-init_proc_sysfs
-
-debug_start
-debug_shell
-
-# Load some modules manually first, then modprobe everything we have
-init_devs
-init_aufs
-init_zram
-
-# Modprobe all devices excluding network drivers
-modprobe_everything -v /drivers/net/
-
-# Initialize blkid cache file
-init_blkid_cache
-
-# Find data directory with filesystem bundles
-DATA="$(find_data 45 "$DATAMNT")"
-check_data_found "$DATA"
-debug_shell
-
-# Setup persistent changes, if possible
-persistent_changes "$DATA" "$CHANGES"
-debug_shell
-
-# Copy to RAM if needed
-DATA="$(copy_to_ram "$DATA" "$CHANGES")"
-
-# Mount bundles
-mount_bundles "$DATA" "$BUNDLES"
-debug_shell
-
-# Init aufs union, or setup overlayfs union
-init_union "$CHANGES" "$UNION" "$BUNDLES"
-
-# Add data to aufs union
-union_append_bundles "$BUNDLES" "$UNION"
-debug_shell
-
-# Rootcopy
-copy_rootcopy_content "$DATA" "$UNION"
-
-# Create fstab
-fstab_create "$UNION" "$DATAMNT"
-debug_shell
-
-# Run user custom preinit
-user_preinit "$DATA" "$UNION"
-
-header "Live Kit done, starting $LIVEKITNAME"
-change_root "$UNION"
-
-header "!!ERROR occurred, you shouldn't be here.!! Well, now that your here for some reason, how is your day going?"
-/bin/sh
-
-# =================================================================
-# Environment-Specific Logic
-# =================================================================
-
-# Handle environment-specific tasks
-case "$ENVIRONMENT" in
-   ventoy)
-      # Ventoy-specific logic
-      echo "Handling Ventoy-specific tasks..."
-      ;;
-   extracted_iso)
-      # Extracted ISO logic
-      echo "Handling extracted ISO tasks..."
-      ;;
-   raw_iso)
-      # Raw ISO logic
-      echo "Handling raw ISO tasks..."
-      ;;
-   *)
-      echo "Unsupported environment"
-      exit 1
-      ;;
-esac
-
-# =================================================================
-# Additional Enhancements
-# =================================================================
-
-# Network Initialization
+# Initialize network settings
 init_network() {
    echo "Initializing network settings..."
    init_network_dev
    init_network_ip
 }
 
-# Filesystem Initialization
+# Initialize filesystem
 init_filesystem() {
    echo "Initializing filesystem..."
-   mkdir -p /proc /sys /etc $MEMORY
-   mount -n -t proc proc /proc
-   mount -n -t sysfs sysfs /sys
-   mount -n -o remount,rw rootfs /
-   ln -sf /proc/mounts /etc/mtab
+   mkdir -p /memory /mnt /tmp
 }
 
 # Debugging Enhancements
@@ -190,7 +139,13 @@ persistent_changes() {
 # =================================================================
 
 main() {
+   # Ensure /proc and /sys are mounted
+   init_proc_sysfs
+
+   # Initialize environment
    init_environment
+
+   # Initialize network and filesystem
    init_network
    init_filesystem
 
@@ -211,11 +166,12 @@ main() {
          ;;
    esac
 
+   # Additional common logic for all environments can be added here
    echo "Initialization complete. Proceeding to boot."
 }
 
+# Execute the main function
 main "$@"
 
-
-header "!!ERROR occured, you shouldn't be here.!! Now that your here for some strange reason, how is your day going?"
+header "!!ERROR occurred, you shouldn't be here.!! Now that you're here for some strange reason, how is your day going?"
 /bin/sh
