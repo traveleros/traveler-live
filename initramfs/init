@@ -23,34 +23,42 @@ fi
 # Define Missing Functions
 # =================================================================
 
+# Revised transfer_initramfs with additional checks and logging.
 transfer_initramfs() {
     echo "Transferring initramfs..."
+    echo "Checking for initrfs.img file in /boot..."
 
     # Define the correct initramfs file path
     INITRAMFS_PATH="/boot/initrfs.img"
 
     # Verify if initramfs exists
     if [ ! -f "$INITRAMFS_PATH" ]; then
-        echo "Error: Initramfs not found at $INITRAMFS_PATH" >&2
+        echo "Error: initrfs.img not found at $INITRAMFS_PATH" >&2
         exit 1
     fi
 
-    # Mount tmpfs for initramfs processing
-    mkdir -p /mnt/initramfs
-    mount -t tmpfs none /mnt/initramfs || {
-        echo "Error: Failed to mount tmpfs for initramfs" >&2
-        exit 1
-    }
+    # Create a safe mount point for tmpfs (and check if it is not already mounted)
+    if ! mountpoint -q /mnt/initramfs; then
+        mkdir -p /mnt/initramfs
+        mount -t tmpfs tmpfs /mnt/initramfs || {
+            echo "Error: Failed to mount tmpfs at /mnt/initramfs" >&2
+            exit 1
+        }
+    else
+        echo "/mnt/initramfs already mounted, proceeding..."
+    fi
 
-    # Copy initramfs to memory space
+    echo "Copying initrfs.img into /mnt/initramfs..."
     cp "$INITRAMFS_PATH" /mnt/initramfs/initrfs.img || {
-        echo "Error: Failed to copy initramfs" >&2
+        echo "Error: Failed to copy initrfs.img" >&2
         exit 1
     }
-
+    
+    sync  # Ensure all writes complete
     echo "Initramfs transferred successfully."
 }
 
+# Basic header function
 header() {
    echo "=== $1 ==="
 }
@@ -173,6 +181,9 @@ persistent_changes() {
 main() {
    # Ensure /proc and /sys are mounted
    init_proc_sysfs
+
+   # Transfer initramfs (add debug logging if needed)
+   transfer_initramfs
 
    # Initialize environment
    init_environment
