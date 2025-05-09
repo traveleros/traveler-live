@@ -6,10 +6,54 @@
 
 export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
 
-. /lib/config
-. /lib/livekitlib
+# Ensure necessary libraries are available before sourcing them
+if [ -f "/lib/config" ]; then
+   . /lib/config
+else
+   echo "Error: /lib/config not found!" >&2
+fi
 
-transfer_initramfs
+if [ -f "/lib/livekitlib" ]; then
+   . /lib/livekitlib
+else
+   echo "Error: /lib/livekitlib not found!" >&2
+fi
+
+# =================================================================
+# Define Missing Functions
+# =================================================================
+
+transfer_initramfs() {
+    echo "Transferring initramfs..."
+
+    # Define the correct initramfs file path
+    INITRAMFS_PATH="/boot/initrfs.img"
+
+    # Verify if initramfs exists
+    if [ ! -f "$INITRAMFS_PATH" ]; then
+        echo "Error: Initramfs not found at $INITRAMFS_PATH" >&2
+        exit 1
+    fi
+
+    # Mount tmpfs for initramfs processing
+    mkdir -p /mnt/initramfs
+    mount -t tmpfs none /mnt/initramfs || {
+        echo "Error: Failed to mount tmpfs for initramfs" >&2
+        exit 1
+    }
+
+    # Copy initramfs to memory space
+    cp "$INITRAMFS_PATH" /mnt/initramfs/initrfs.img || {
+        echo "Error: Failed to copy initramfs" >&2
+        exit 1
+    }
+
+    echo "Initramfs transferred successfully."
+}
+
+header() {
+   echo "=== $1 ==="
+}
 
 MEMORY=/memory
 CHANGES=$MEMORY/changes
@@ -61,29 +105,17 @@ init_proc_sysfs() {
 
 # Detect if running in Ventoy environment
 is_ventoy() {
-   if [ -f "/ventoy/version" ]; then
-      return 0
-   else
-      return 1
-   fi
+   [ -f "/ventoy/version" ]
 }
 
 # Detect if running in Rufus/Etcher/UNetbootin environment
 is_extracted_iso() {
-   if [ -f "/syslinux.cfg" ] || [ -f "/isolinux/isolinux.cfg" ] || [ -f "/boot/grub/grub.cfg" ]; then
-      return 0
-   else
-      return 1
-   fi
+   [ -f "/syslinux.cfg" ] || [ -f "/isolinux/isolinux.cfg" ] || [ -f "/boot/grub/grub.cfg" ]
 }
 
 # Detect if running from a raw ISO image
 is_raw_iso() {
-   if grep -q "iso9660" /proc/mounts 2>/dev/null; then
-      return 0
-   else
-      return 1
-   fi
+   grep -q "iso9660" /proc/mounts 2>/dev/null
 }
 
 # Initialize environment
