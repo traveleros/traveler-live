@@ -12,6 +12,34 @@ fi
 # Set the bundle extension to "sb" so that the module 01-core.sb is looked for.
 BEXT=sb
 
+# ------------------------------------------------------------------
+# Helper function: mount_traveler2
+#
+# This function attempts to find a partition whose LABEL (or an alternate
+# identifier) is "TRAVELER2" (adjust as needed) and manually mounts it.
+# If the mounted device contains a folder named "traveler2", it echoes its path.
+# ------------------------------------------------------------------
+mount_traveler2() {
+    local device fs options mnt mount_cmd
+    mnt=$(mktemp -d)
+    # Look for a partition with the label "TRAVELER2"
+    device=$(blkid -t LABEL="TRAVELER2" -o device -c /dev/null 2>/dev/null)
+    if [ -n "$device" ]; then
+         fs=$(device_bestfs "$device")
+         options=$(fs_options $fs)
+         mount_cmd=$(mount_command $fs)
+         # Try to mount the device on the temporary mount point
+         $mount_cmd "$device" "$mnt" $options 2>/dev/null
+         if [ -d "$mnt/traveler2" ]; then
+             echo "$mnt/traveler2"
+             return 0
+         fi
+         umount "$mnt" 2>/dev/null
+    fi
+    rmdir "$mnt"
+    return 1
+}
+
 # =================================================================
 # debug and output functions
 # =================================================================
@@ -666,17 +694,27 @@ find_data() {
       return
    fi
 
-   # if we got IP address as boot parameter, it means we booted over PXE
+   # if we got an IP boot parameter, assume PXE and download accordingly
    if [ "$(cmdline_value ip)" != "" ]; then
       download_data_pxe "$2"
       return
    fi
 
-   # If user wants to get asked, ask and periodically update list of devices
-   # boot parameter specified as from=askdisk or from=askdisk/directory/where/system/is/installed
-   FROM=$(ask_disk "$FROM" from)
+   # If LIVEKITNAME is traveler2, try our direct check first.
+   if [ "$LIVEKITNAME" = "traveler2" ]; then
+       if [ -d "/traveler2" ]; then
+            echo "/traveler2"
+            return
+       else
+            DATA=$(mount_traveler2)
+            if [ -n "$DATA" ] && [ -d "$DATA" ]; then
+                echo "$DATA"
+                return
+            fi
+       fi
+   fi
 
-   # default to livekitname autodetected on all disks
+   # If no boot parameter "from" is specified, default to LIVEKITNAME.
    if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
 
    echo_green_star >&2
