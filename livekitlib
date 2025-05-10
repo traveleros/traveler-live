@@ -4,6 +4,10 @@
 # Author: Tomas M. <http://www.linux-live.org>
 # Author: Adrian E. <https://bit.ly/travelerwebsite>
 
+# Preload USB keyboard driver(s)
+modprobe usbhid
+modprobe uhci_hcd  # or xhci_hcd, ehci_hcd depending on your system
+
 # If running under Ventoy, override the default live data name
 if [ -f /ventoy/ventoy_dm_table ]; then
     LIVEKITNAME="traveler2"
