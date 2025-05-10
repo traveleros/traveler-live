@@ -9,6 +9,9 @@ if [ -f /ventoy/ventoy_dm_table ]; then
     LIVEKITNAME="traveler2"
 fi
 
+# Set the bundle extension to "sb" so that the module 01-core.sb is looked for.
+BEXT=sb
+
 # =================================================================
 # debug and output functions
 # =================================================================
