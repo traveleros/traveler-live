@@ -22,17 +22,26 @@ BEXT=sb
 mount_traveler2() {
     local device fs options mnt mount_cmd
     mnt=$(mktemp -d)
-    # Look for a partition with the label "TRAVELER2"
+    echo "- debug: Created temporary mount point: $mnt" >&2
+    # Look for a partition with the label "TRAVELER2" or "traveler2"
     device=$(blkid -t LABEL="TRAVELER2" -o device -c /dev/null 2>/dev/null)
+    if [ -z "$device" ]; then
+        device=$(blkid -t LABEL="traveler2" -o device -c /dev/null 2>/dev/null)
+    fi
+    echo "- debug: blkid found device: $device" >&2
     if [ -n "$device" ]; then
          fs=$(device_bestfs "$device")
          options=$(fs_options $fs)
          mount_cmd=$(mount_command $fs)
-         # Try to mount the device on the temporary mount point
+         echo "- debug: Mounting $device on $mnt using fs $fs and options: $options" >&2
          $mount_cmd "$device" "$mnt" $options 2>/dev/null
-         if [ -d "$mnt/traveler2" ]; then
-             echo "$mnt/traveler2"
+         # Check directly for the core module file
+         if [ -f "$mnt/01-core.sb" ]; then
+             echo "- debug: Found 01-core.sb in $mnt" >&2
+             echo "$mnt"
              return 0
+         else
+             echo "- debug: 01-core.sb not found in $mnt" >&2
          fi
          umount "$mnt" 2>/dev/null
     fi
@@ -688,37 +697,39 @@ find_data() {
 
    FROM="$(cmdline_value from)"
 
-   # boot parameter specified as from=http://server.com/file.iso
+   # If a boot parameter specifies an HTTP source, use that
    if [ "$(echo $FROM | grep 'http://')" != "" ]; then
       mount_data_http "$FROM" "$2"
       return
    fi
 
-   # if we got an IP boot parameter, assume PXE and download accordingly
+   # If an IP parameter is present (PXE boot), download data accordingly
    if [ "$(cmdline_value ip)" != "" ]; then
       download_data_pxe "$2"
       return
    fi
 
-   # If LIVEKITNAME is traveler2, try our direct check first.
+   # If LIVEKITNAME is traveler2, check directly:
    if [ "$LIVEKITNAME" = "traveler2" ]; then
-       if [ -d "/traveler2" ]; then
+       echo "- debug: Checking if /traveler2/01-core.sb exists..." >&2
+       if [ -f "/traveler2/01-core.sb" ]; then
             echo "/traveler2"
             return
        else
+            echo "- debug: /traveler2/01-core.sb not found; invoking mount_traveler2()" >&2
             DATA=$(mount_traveler2)
-            if [ -n "$DATA" ] && [ -d "$DATA" ]; then
+            if [ -n "$DATA" ] && [ -f "$DATA/01-core.sb" ]; then
                 echo "$DATA"
                 return
             fi
        fi
    fi
 
-   # If no boot parameter "from" is specified, default to LIVEKITNAME.
+   # Default to boot parameter "from" or fallback to LIVEKITNAME.
    if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
 
    echo_green_star >&2
-   echo -n "Looking for TravelerOS data in /$FROM .." | tr -s "/" >&2 >/dev/tty1
+   echo -n "Looking for TravelerOS data in /$FROM ..." | tr -s "/" >&2 >/dev/tty1
    for TIMEOUT in $(seq 1 $1); do
       echo -n "." >&2 >/dev/tty1
       refresh_devs
@@ -732,15 +743,6 @@ find_data() {
       sleep 1
    done
    echo "" >&2 >/dev/tty1
-}
-
-# Check if data is found and exists
-# $1 = data directory
-#
-check_data_found() {
-   if [ "$1" = "" -o ! -d "$1" ]; then
-      fatal "Could not locate TravelerOS data"
-   fi
 }
 
 # Get a human readable format of time elapsed since given datetime
