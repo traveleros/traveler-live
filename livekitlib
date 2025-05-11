@@ -694,9 +694,10 @@ find_data_try() {
 # until timeout or data is found.
 # $1 = timeout
 # $2 = data directory target (mount here)
+
 find_data() {
    debug_log "find_data" "$*"
-   local DATA FROM TIMEOUT
+   local DATA FROM TIMEOUT FOUND_DIR
 
    FROM="$(cmdline_value from)"
 
@@ -712,7 +713,7 @@ find_data() {
       return
    fi
 
-   # [NEW] Check if 01-core.sb is found in common locations.
+   # [NEW] Check for 01-core.sb in explicit known locations.
    if [ "$LIVEKITNAME" = "traveler2" ]; then
        echo "- debug: Checking for 01-core.sb in known mount locations..." >&2
 
@@ -726,13 +727,48 @@ find_data() {
             return
        fi
 
-       echo "- debug: Not found in expected locations; invoking mount_traveler2()..." >&2
+       echo "- debug: Not found in standard locations; invoking mount_traveler2()..." >&2
        DATA=$(mount_traveler2)
        if [ -n "$DATA" ] && [ -f "$DATA/01-core.sb" ]; then
             echo "$DATA"
             return
        fi
+
+       # [FALLBACK] If still not found, perform a recursive search starting from /mnt, /cdrom, and /ventoy.
+       echo "- debug: Recursive search for 01-core.sb starting at common mount points..." >&2
+       for base in /mnt /cdrom /ventoy; do
+           FOUND_DIR=$(find "$base" -maxdepth 4 -type f -name "01-core.sb" 2>/dev/null | head -n 1)
+           if [ -n "$FOUND_DIR" ]; then
+               echo "- debug: Found 01-core.sb at: $FOUND_DIR" >&2
+               # Return the directory containing the file.
+               echo "$(dirname "$FOUND_DIR")"
+               return
+           fi
+       done
    fi
+
+   # If no boot parameter "from" is specified, default to LIVEKITNAME.
+   if [ "$FROM" = "" ]; then 
+      FROM="$LIVEKITNAME"
+   fi
+
+   echo_green_star >&2
+   echo -n "Looking for TravelerOS data in /$FROM .." | tr -s "/" >&2 >/dev/tty1
+   for TIMEOUT in $(seq 1 $1); do
+      echo -n "." >&2 >/dev/tty1
+      refresh_devs
+      DATA="$(find_data_try "$2" "$FROM")"
+      if [ "$DATA" != "" ]; then
+         echo "" >&2 >/dev/tty1
+         echo "* Found on $(mounted_device "$2")" >&2 >/dev/tty1
+         echo "$DATA"
+         return
+      fi
+      sleep 1
+   done
+   echo "" >&2 >/dev/tty1
+}
+
 
    # If no boot parameter "from" is specified, default to LIVEKITNAME.
    if [ "$FROM" = "" ]; then 
