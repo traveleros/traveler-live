@@ -691,105 +691,56 @@ find_data_try() {
 }
 
 # Retry finding LIVEKIT data several times,
-# until timeouted or until data is found
+# until timeout or data is found.
 # $1 = timeout
 # $2 = data directory target (mount here)
-#
 find_data() {
    debug_log "find_data" "$*"
    local DATA FROM TIMEOUT
 
    FROM="$(cmdline_value from)"
 
-   # If a boot parameter specifies an HTTP source, use that
+   # If a boot parameter specifies an HTTP source, use that.
    if [ "$(echo $FROM | grep 'http://')" != "" ]; then
       mount_data_http "$FROM" "$2"
       return
    fi
 
-   # If an IP parameter is present (PXE boot), download data accordingly
+   # If an IP parameter is present (PXE boot), download data accordingly.
    if [ "$(cmdline_value ip)" != "" ]; then
       download_data_pxe "$2"
       return
    fi
 
-  find_data() {
-   debug_log "find_data" "$*"
-   local DATA FROM TIMEOUT
-
-   FROM="$(cmdline_value from)"
-
-   # boot parameter specified as from=http://server.com/file.iso
-   if [[ "$FROM" == http://* ]]; then
-      mount_data_http "$FROM" "$2"
-      return
-   fi
-
-   # if we got an IP boot parameter, assume PXE and download accordingly
-   if [ "$(cmdline_value ip)" != "" ]; then
-      download_data_pxe "$2"
-      return
-   fi
-
-   # --------------------------------------
-   # [NEW] Check Ventoy locations for traveler2
-   # --------------------------------------
+   # [NEW] Check if 01-core.sb is found in common locations.
    if [ "$LIVEKITNAME" = "traveler2" ]; then
-       echo "- debug: Checking potential mount points for traveler2 data..." >&2
-       
-       for path in "/traveler2" "/cdrom/traveler2" "/mnt/traveler2" "/ventoy/traveler2" "/media/traveler2"; do
-           if [ -f "$path/01-core.sb" ]; then
-               echo "- debug: Found 01-core.sb in $path" >&2
-               echo "$path"
-               return
-           fi
-       done
+       echo "- debug: Checking for 01-core.sb in known mount locations..." >&2
 
-       echo "- debug: Searching for mounted ISO..." >&2
-       ISO_MOUNT=$(find /mnt /cdrom /ventoy -name "TravelerOS-2-Zippy-amd64.iso" 2>/dev/null | head -n 1)
-
-       if [ -n "$ISO_MOUNT" ]; then
-           echo "- debug: Found ISO at $ISO_MOUNT, checking for traveler2 inside..." >&2
-           if [ -d "$ISO_MOUNT/traveler2" ]; then
-               echo "$ISO_MOUNT/traveler2"
-               return
-           fi
+       if [ -f "/traveler2/01-core.sb" ]; then
+            echo "/traveler2"
+            return
        fi
 
-       echo "- debug: Running mount_traveler2() as fallback..." >&2
+       if [ -f "/TravelerOS-2-Zippy-amd64/traveler2/01-core.sb" ]; then
+            echo "/TravelerOS-2-Zippy-amd64/traveler2"
+            return
+       fi
+
+       echo "- debug: Not found in expected locations; invoking mount_traveler2()..." >&2
        DATA=$(mount_traveler2)
        if [ -n "$DATA" ] && [ -f "$DATA/01-core.sb" ]; then
-           echo "$DATA"
-           return
+            echo "$DATA"
+            return
        fi
    fi
-   # --------------------------------------
 
    # If no boot parameter "from" is specified, default to LIVEKITNAME.
-   if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
+   if [ "$FROM" = "" ]; then 
+      FROM="$LIVEKITNAME"
+   fi
 
    echo_green_star >&2
    echo -n "Looking for TravelerOS data in /$FROM .." | tr -s "/" >&2 >/dev/tty1
-   for TIMEOUT in $(seq 1 $1); do
-      echo -n "." >&2 >/dev/tty1
-      refresh_devs
-      DATA="$(find_data_try "$2" "$FROM")"
-      if [ "$DATA" != "" ]; then
-         echo "" >&2 >/dev/tty1
-         echo "* Found on $(mounted_device "$2")" >&2 >/dev/tty1
-         echo "$DATA"
-         return
-      fi
-      sleep 1
-   done
-   echo "" >&2 >/dev/tty1
-}
-
-   # Default to boot parameter "from" or fallback to LIVEKITNAME.
-   if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
-
-   echo_green_star >&2
-   echo -n "Looking for TravelerOS data in /$FROM ..." | tr -s "/" >&2 >/dev/tty1
    for TIMEOUT in $(seq 1 $1); do
       echo -n "." >&2 >/dev/tty1
       refresh_devs
