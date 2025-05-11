@@ -713,21 +713,77 @@ find_data() {
       return
    fi
 
-   # If LIVEKITNAME is traveler2, check directly:
+  find_data() {
+   debug_log "find_data" "$*"
+   local DATA FROM TIMEOUT
+
+   FROM="$(cmdline_value from)"
+
+   # boot parameter specified as from=http://server.com/file.iso
+   if [[ "$FROM" == http://* ]]; then
+      mount_data_http "$FROM" "$2"
+      return
+   fi
+
+   # if we got an IP boot parameter, assume PXE and download accordingly
+   if [ "$(cmdline_value ip)" != "" ]; then
+      download_data_pxe "$2"
+      return
+   fi
+
+   # --------------------------------------
+   # [NEW] Check Ventoy locations for traveler2
+   # --------------------------------------
    if [ "$LIVEKITNAME" = "traveler2" ]; then
-       echo "- debug: Checking if /traveler2/01-core.sb exists..." >&2
-       if [ -f "/traveler2/01-core.sb" ]; then
-            echo "/traveler2"
-            return
-       else
-            echo "- debug: /traveler2/01-core.sb not found; invoking mount_traveler2()" >&2
-            DATA=$(mount_traveler2)
-            if [ -n "$DATA" ] && [ -f "$DATA/01-core.sb" ]; then
-                echo "$DATA"
-                return
-            fi
+       echo "- debug: Checking potential mount points for traveler2 data..." >&2
+       
+       for path in "/traveler2" "/cdrom/traveler2" "/mnt/traveler2" "/ventoy/traveler2" "/media/traveler2"; do
+           if [ -f "$path/01-core.sb" ]; then
+               echo "- debug: Found 01-core.sb in $path" >&2
+               echo "$path"
+               return
+           fi
+       done
+
+       echo "- debug: Searching for mounted ISO..." >&2
+       ISO_MOUNT=$(find /mnt /cdrom /ventoy -name "TravelerOS-2-Zippy-amd64.iso" 2>/dev/null | head -n 1)
+
+       if [ -n "$ISO_MOUNT" ]; then
+           echo "- debug: Found ISO at $ISO_MOUNT, checking for traveler2 inside..." >&2
+           if [ -d "$ISO_MOUNT/traveler2" ]; then
+               echo "$ISO_MOUNT/traveler2"
+               return
+           fi
+       fi
+
+       echo "- debug: Running mount_traveler2() as fallback..." >&2
+       DATA=$(mount_traveler2)
+       if [ -n "$DATA" ] && [ -f "$DATA/01-core.sb" ]; then
+           echo "$DATA"
+           return
        fi
    fi
+   # --------------------------------------
+
+   # If no boot parameter "from" is specified, default to LIVEKITNAME.
+   if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
+
+   echo_green_star >&2
+   echo -n "Looking for TravelerOS data in /$FROM .." | tr -s "/" >&2 >/dev/tty1
+   for TIMEOUT in $(seq 1 $1); do
+      echo -n "." >&2 >/dev/tty1
+      refresh_devs
+      DATA="$(find_data_try "$2" "$FROM")"
+      if [ "$DATA" != "" ]; then
+         echo "" >&2 >/dev/tty1
+         echo "* Found on $(mounted_device "$2")" >&2 >/dev/tty1
+         echo "$DATA"
+         return
+      fi
+      sleep 1
+   done
+   echo "" >&2 >/dev/tty1
+}
 
    # Default to boot parameter "from" or fallback to LIVEKITNAME.
    if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
